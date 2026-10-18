@@ -22,6 +22,19 @@ terraform apply
 
 The default `ssh_allowed_cidr_blocks` and `api_allowed_cidr_blocks` are open for a lab. Restrict them in `terraform.tfvars` before exposing these instances.
 
+## Monthly cost estimate
+
+The default `instance_type` in `variables.tf` is `t3.medium` for all three control-plane and three worker nodes. For the default Singapore region (`ap-southeast-1`), the estimate below assumes Linux On-Demand pricing, six instances running 730 hours per month, and one public IPv4 address per instance. Prices are in USD and were checked in October 2026.
+
+| Item | Calculation | Estimated monthly cost |
+| --- | ---: | ---: |
+| Six `t3.medium` instances | 6 × 730 hours × $0.0528/hour | $231.26 |
+| Six public IPv4 addresses | 6 × 730 hours × $0.005/hour | $21.90 |
+| Example EBS storage | 6 × 20 GB gp3 × $0.096/GB-month | $11.52 |
+| **Illustrative total** | | **$264.68/month** |
+
+The EBS line assumes a **20 GB gp3 root volume per node** for illustration. Terraform does not set root volume size or type, so the actual EBS charge depends on the selected AMI and any attached volumes. The estimate excludes data transfer (including traffic between AZs), S3 state storage and requests, snapshots, taxes, and possible T3 Unlimited surplus CPU credits. Check current rates before deployment: [EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/), [Singapore `t3.medium` rate](https://aws-pricing.com/t3.medium.html), [public IPv4 pricing](https://aws.amazon.com/vpc/pricing/), and [EBS pricing](https://aws.amazon.com/ebs/pricing/) ([Singapore gp3 rate](https://tools.getfinops.cloud/gp2-to-gp3-savings-calculator/)).
+
 ## Initialize the cluster
 
 Wait for cloud-init to finish on the nodes (`cloud-init status --wait`). SSH to the first control-plane IP from `terraform output control_plane_public_ips`. Check `systemctl status keepalived` and that the active node owns the private API address shown by `terraform output api_server_endpoint`. Keepalived can elect a node before the Kubernetes API exists; there is no need to wait for API health before `kubeadm init`.
