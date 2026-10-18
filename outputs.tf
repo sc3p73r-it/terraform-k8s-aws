@@ -1,9 +1,5 @@
-output "control_plane_public_ip" {
-  description = "Public IP address of the Control Plane node."
-  value       = aws_instance.control_plane.public_ip
-}
-
-output "worker_nodes_public_ips" {
-  description = "Public IP addresses of the Worker nodes."
-  value       = aws_instance.worker_nodes[*].public_ip
-}
+output "api_server_endpoint" { value = module.k8s_cluster.api_server_endpoint }
+output "api_virtual_ip" { value = module.k8s_cluster.api_virtual_ip }
+output "control_plane_private_ips" { value = module.k8s_cluster.control_plane_private_ips }
+output "control_plane_public_ips" { value = module.k8s_cluster.control_plane_public_ips }
+output "worker_public_ips" { value = module.k8s_cluster.worker_public_ips }

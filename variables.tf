@@ -1,25 +1,36 @@
 variable "aws_region" {
-  description = "The AWS region to create resources in."
-  default     = "ap-southeast-1"
+  type    = string
+  default = "ap-southeast-1"
 }
-
 variable "cluster_name" {
-  description = "The name for the Kubernetes cluster and associated resources."
-  default     = "vanilla-k8s"
+  type    = string
+  default = "vanilla-k8s"
 }
-
+variable "vpc_cidr" {
+  type    = string
+  default = "10.0.0.0/16"
+}
+variable "availability_zones" {
+  type    = list(string)
+  default = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+}
 variable "instance_type" {
-  description = "The EC2 instance type for the nodes."
-  default     = "c7i-flex.large" # Requires at least 2 vCPU
+  type    = string
+  default = "t3.medium"
 }
-
 variable "ami_id" {
-  description = "The AMI ID for Ubuntu 24.04 LTS in the specified region."
-  default     = "ami-0933f1385008d33c4" # Ubuntu 24.04 for ap-southeast-1
+  type    = string
+  default = "ami-0933f1385008d33c4"
 }
-
 variable "key_name" {
-  description = "The name of your SSH key pair in AWS."
-  # Replace "my-aws-key" with the actual name of your key pair in AWS EC2.
-  default     = "agdevops"
+  type    = string
+  default = "agdevops"
+}
+variable "ssh_allowed_cidr_blocks" {
+  type    = list(string)
+  default = ["0.0.0.0/0"]
+}
+variable "api_allowed_cidr_blocks" {
+  type    = list(string)
+  default = ["0.0.0.0/0"]
 }

@@ -1,0 +1,91 @@
+# Keepalived runs only on control-plane nodes. AWS VPC routing requires the
+# elected node to claim the VIP as an EC2 secondary private address.
+cat >/opt/k8s-ansible/keepalived.yml <<'YAML'
+---
+- hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install control-plane failover packages
+      ansible.builtin.apt:
+        name: [keepalived, awscli]
+        state: present
+YAML
+ansible-playbook -i localhost, /opt/k8s-ansible/keepalived.yml
+
+cat >/usr/local/sbin/claim-k8s-vip <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+token=$(curl --fail --silent --show-error --max-time 3 -X PUT \
+  -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+  http://169.254.169.254/latest/api/token)
+mac=$(curl --fail --silent --show-error --max-time 3 \
+  -H "X-aws-ec2-metadata-token: $token" \
+  http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -n 1)
+eni=$(curl --fail --silent --show-error --max-time 3 \
+  -H "X-aws-ec2-metadata-token: $token" \
+  "http://169.254.169.254/latest/meta-data/network/interfaces/macs/$mac/interface-id")
+
+for attempt in 1 2 3 4 5; do
+  if aws ec2 assign-private-ip-addresses \
+    --network-interface-id "$eni" \
+    --private-ip-addresses "${vip}" \
+    --allow-reassignment \
+    --region "${aws_region}"; then
+    exit 0
+  fi
+  sleep 2
+done
+exit 1
+SCRIPT
+chmod 0750 /usr/local/sbin/claim-k8s-vip
+
+cat >/usr/local/sbin/check-k8s-apiserver <<'SCRIPT'
+#!/usr/bin/env bash
+curl --insecure --fail --silent --show-error --max-time 2 \
+  https://127.0.0.1:6443/livez >/dev/null
+SCRIPT
+chmod 0750 /usr/local/sbin/check-k8s-apiserver
+
+interface=$(ip -o -4 addr show | awk -v addr="${own_ip}" '$4 ~ "^" addr "/" { print $2; exit }')
+test -n "$interface"
+
+cat >/etc/keepalived/keepalived.conf <<CONFIG
+global_defs {
+  enable_script_security
+  script_user root
+}
+
+vrrp_script check_apiserver {
+  script "/usr/local/sbin/check-k8s-apiserver"
+  interval 2
+  fall 2
+  rise 2
+  weight -50
+}
+
+vrrp_instance K8S_API {
+  state BACKUP
+  interface $interface
+  virtual_router_id ${router_id}
+  priority ${priority}
+  advert_int 1
+  unicast_src_ip ${own_ip}
+  unicast_peer {
+%{ for peer in peer_ips ~}
+    ${peer}
+%{ endfor ~}
+  }
+  virtual_ipaddress {
+    ${vip}/32 dev $interface
+  }
+  track_script {
+    check_apiserver
+  }
+  notify_master "/usr/local/sbin/claim-k8s-vip"
+}
+CONFIG
+
+systemctl enable keepalived
+systemctl restart keepalived

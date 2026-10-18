@@ -1,0 +1,12 @@
+variable "cluster_name" { type = string }
+variable "vpc_cidr" { type = string }
+variable "availability_zones" { type = list(string) }
+variable "ami_id" { type = string }
+variable "instance_type" { type = string }
+variable "key_name" { type = string }
+variable "control_plane_count" { type = number }
+variable "worker_count" { type = number }
+variable "ssh_allowed_cidr_blocks" { type = list(string) }
+variable "api_allowed_cidr_blocks" { type = list(string) }
+variable "bootstrap_script" { type = string }
+variable "aws_region" { type = string }

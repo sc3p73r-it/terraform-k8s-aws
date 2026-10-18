@@ -1,46 +1,66 @@
-#!/bin/bash
-sudo apt update && sudo apt upgrade -y
-# Install dependencies
-sudo apt install -y apt-transport-https ca-certificates curl gnupg
-
-# sysctl params required by setup, params persist across reboots
-cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.ipv4.ip_forward = 1
-EOF
-
-# Apply sysctl params without reboot
-sudo sysctl --system
-
-# Install containerd (Container Runtime)
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y containerd.io
-
-# Configure containerd
-sudo mkdir -p /etc/containerd
-sudo containerd config default | sudo tee /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-sudo systemctl restart containerd
-
-# # Disable swap
-# sudo swapoff -a
-# sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
-
-# Install Kubernetes components (kubeadm, kubelet, kubectl)
-# If the directory `/etc/apt/keyrings` does not exist, it should be created before the curl command, read the note below.
-# sudo mkdir -p -m 755 /etc/apt/keyrings
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
-sudo apt update
-# Retry loop for apt-get install
-for i in {1..5}; do
-  sudo apt-get install -y kubelet kubeadm kubectl && break
-  echo "apt-get install failed. Retrying in 5 seconds..."
-  sleep 5
-done
-
-sudo apt-mark hold kubelet kubeadm kubectl
+#!/usr/bin/env bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ansible
+install -d -m 0755 /opt/k8s-ansible/roles/kubernetes_node/tasks
+cat >/opt/k8s-ansible/site.yml <<'YAML'
+---
+- hosts: localhost
+  connection: local
+  become: true
+  roles: [kubernetes_node]
+YAML
+cat >/opt/k8s-ansible/roles/kubernetes_node/tasks/main.yml <<'YAML'
+---
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name: [apt-transport-https, ca-certificates, curl, gpg, containerd]
+    state: present
+    update_cache: true
+- name: Disable swap
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+- name: Disable swap in fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+- name: Enable forwarding
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    mode: '0644'
+    content: "net.ipv4.ip_forward = 1\n"
+- name: Apply sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: false
+- name: Configure containerd
+  ansible.builtin.shell: |
+    mkdir -p /etc/containerd
+    containerd config default >/etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  args: {executable: /bin/bash}
+- name: Restart containerd
+  ansible.builtin.service: {name: containerd, state: restarted, enabled: true}
+- name: Install Kubernetes repository key
+  ansible.builtin.shell: |
+    mkdir -p -m 755 /etc/apt/keyrings
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args: {executable: /bin/bash, creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg}
+- name: Add Kubernetes repository
+  ansible.builtin.apt_repository:
+    repo: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /'
+    filename: kubernetes
+- name: Install Kubernetes packages
+  ansible.builtin.apt:
+    name: [kubelet, kubeadm, kubectl]
+    state: present
+    update_cache: true
+- name: Hold Kubernetes packages
+  ansible.builtin.dpkg_selections:
+    name: '{{ item }}'
+    selection: hold
+  loop: [kubelet, kubeadm, kubectl]
+YAML
+ansible-playbook -i localhost, /opt/k8s-ansible/site.yml
+touch /var/lib/k8s-bootstrap-complete
