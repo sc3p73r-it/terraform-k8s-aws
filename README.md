@@ -24,16 +24,16 @@ The default `ssh_allowed_cidr_blocks` and `api_allowed_cidr_blocks` are open for
 
 ## Monthly cost estimate
 
-The default `instance_type` in `variables.tf` is `t3.medium` for all three control-plane and three worker nodes. For the default Singapore region (`ap-southeast-1`), the estimate below assumes Linux On-Demand pricing, six instances running 730 hours per month, and one public IPv4 address per instance. Prices are in USD and were checked in October 2026.
+The default `instance_type` in `variables.tf` is `t3.medium` for all three control-plane and three worker nodes. For the default Singapore region (`ap-southeast-1`), this estimate assumes Linux On-Demand pricing and that **all six instances run 3 hours per day and are stopped for the other 21 hours**. A 30-day month gives 90 running hours per instance. Prices are in USD and were checked in October 2026.
 
 | Item | Calculation | Estimated monthly cost |
 | --- | ---: | ---: |
-| Six `t3.medium` instances | 6 × 730 hours × $0.0528/hour | $231.26 |
-| Six public IPv4 addresses | 6 × 730 hours × $0.005/hour | $21.90 |
-| Example EBS storage | 6 × 20 GB gp3 × $0.096/GB-month | $11.52 |
-| **Illustrative total** | | **$264.68/month** |
+| Six `t3.medium` instances | 6 × 90 hours × $0.0528/hour | $28.51 |
+| Six public IPv4 addresses while running | 6 × 90 hours × $0.005/hour | $2.70 |
+| Example EBS storage, including stopped time | 6 × 20 GB gp3 × $0.096/GB-month | $11.52 |
+| **Illustrative total** | | **$42.73/month** |
 
-The EBS line assumes a **20 GB gp3 root volume per node** for illustration. Terraform does not set root volume size or type, so the actual EBS charge depends on the selected AMI and any attached volumes. The estimate excludes data transfer (including traffic between AZs), S3 state storage and requests, snapshots, taxes, and possible T3 Unlimited surplus CPU credits. Check current rates before deployment: [EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/), [Singapore `t3.medium` rate](https://aws-pricing.com/t3.medium.html), [public IPv4 pricing](https://aws.amazon.com/vpc/pricing/), and [EBS pricing](https://aws.amazon.com/ebs/pricing/) ([Singapore gp3 rate](https://tools.getfinops.cloud/gp2-to-gp3-savings-calculator/)).
+The EBS line assumes a **20 GB gp3 root volume per node** for illustration. Terraform does not set root volume size or type, so the actual EBS charge depends on the selected AMI and any attached volumes. With a 31-day month at the same 3-hour daily schedule, the illustrative total is **$43.77**. Compute charges stop when the instances stop, but EBS storage charges continue. Automatically assigned public IPv4 addresses are released on stop and generally change on restart; refresh the control-plane and worker public IPs before SSH access. The Kubernetes cluster is unavailable while all control-plane nodes are stopped. This estimate does not include the cost of any start/stop automation and excludes data transfer (including traffic between AZs), S3 state storage and requests, snapshots, taxes, and possible T3 Unlimited surplus CPU credits. Check current rates before deployment: [EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/), [Singapore `t3.medium` rate](https://aws-pricing.com/t3.medium.html), [public IPv4 pricing](https://aws.amazon.com/vpc/pricing/), [EBS pricing](https://aws.amazon.com/ebs/pricing/) ([Singapore gp3 rate](https://tools.getfinops.cloud/gp2-to-gp3-savings-calculator/)), and [EC2 stop/start behavior](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html).
 
 ## Initialize the cluster
 
